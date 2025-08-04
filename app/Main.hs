@@ -18,16 +18,22 @@ eventLoop vty st = do
     NormalMode ->
       case e of
         EvKey (KChar 'i') [] -> eventLoop vty $ st {mode = InsertMode}
-        EvKey (KChar 'h') [] -> eventLoop vty $ st {cx = max 0 (cx st - 1)}
+        EvKey (KChar 'h') [] -> eventLoop vty $ moveCursorLeft st
         EvKey (KChar 'j') [] -> eventLoop vty $ moveCursorVert 1 st
         EvKey (KChar 'k') [] -> eventLoop vty $ moveCursorVert (-1) st
-        EvKey (KChar 'l') [] ->
-          let curLine = lines st !! cy st
-           in eventLoop vty $ st {cx = min (length curLine - 1) (cx st + 1)}
+        EvKey (KChar 'l') [] -> eventLoop vty $ moveCursorRight st
+        EvKey KLeft [] -> eventLoop vty $ moveCursorLeft st
+        EvKey KDown [] -> eventLoop vty $ moveCursorVert 1 st
+        EvKey KUp [] -> eventLoop vty $ moveCursorVert (-1) st
+        EvKey KRight [] -> eventLoop vty $ moveCursorRight st
         EvKey KEsc [] -> shutdown vty
         _ -> eventLoop vty st
     InsertMode ->
       case e of
+        EvKey KLeft [] -> eventLoop vty $ moveCursorLeft st
+        EvKey KDown [] -> eventLoop vty $ moveCursorVert 1 st
+        EvKey KUp [] -> eventLoop vty $ moveCursorVert (-1) st
+        EvKey KRight [] -> eventLoop vty $ moveCursorRight st
         EvKey KBS [] | cx st == 0 && cy st > 0 -> do
           -- put cur line at end of prev line
           let curLines = lines st
@@ -73,6 +79,14 @@ eventLoop vty st = do
         EvKey KEsc [] -> eventLoop vty $ st {mode = NormalMode}
         _ -> eventLoop vty st
 
+moveCursorLeft :: State -> State
+moveCursorLeft st = st {cx = max 0 (cx st - 1)}
+
+moveCursorRight :: State -> State
+moveCursorRight st =
+  let curLine = lines st !! cy st
+   in st {cx = min (length curLine - 1) (cx st + 1)}
+
 moveCursorVert :: Int -> State -> State
 moveCursorVert dy st =
   let curY = cy st
@@ -95,13 +109,12 @@ modifyAt n f xs =
 draw :: Vty -> State -> IO ()
 draw vty st = do
   (width, height) <- displayBounds (outputIface vty)
-  let content =
+  let contentLines =
         lines st
           & take (height - 1)
           & map (string defAttr)
-          & vertCat
-      statusLine = statusLineImage width height st
-      img = [content <-> statusLine]
+      statusLine = statusLineImage width height (length contentLines) st
+      img = [vertCat contentLines <-> statusLine]
   update vty $
     Picture
       { picCursor = Cursor (cx st) (cy st),
@@ -109,15 +122,15 @@ draw vty st = do
         picBackground = ClearBackground
       }
 
-statusLineImage :: Int -> Int -> State -> Image
-statusLineImage width height st =
+statusLineImage :: Int -> Int -> Int -> State -> Image
+statusLineImage width height nContentLines st =
   let (str, fg, bg) = case mode st of
         NormalMode -> ("NORMAL", black, green)
         InsertMode -> ("INSERT", black, blue)
       padded = take width (str ++ repeat ' ')
       attr = (defAttr `withBackColor` bg) `withForeColor` fg
    in string attr padded
-        & translateY (height - 3)
+        & translateY (height - nContentLines - 1)
 
 initialState :: State
 initialState =
