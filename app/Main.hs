@@ -28,7 +28,28 @@ eventLoop vty st = do
         _ -> eventLoop vty st
     InsertMode ->
       case e of
+        EvKey KBS [] | cx st == 0 && cy st > 0 -> do
+          -- put cur line at end of prev line
+          let curLines = lines st
+              curY = cy st
+              curLine = curLines !! curY
+              prevLine = curLines !! (curY - 1)
+              pre = take (curY - 1) curLines
+              post = drop (curY + 1) curLines
+              newLines = pre ++ [prevLine <> curLine] ++ post
+          eventLoop vty $ st {lines = newLines, cx = length prevLine, cy = curY - 1}
+        EvKey KBS [] | cx st > 0 -> do
+          -- delete char from cur line
+          let curLines = lines st
+              curLine = curLines !! cy st
+              x = cx st
+              pre = take (x - 1) curLine
+              post = drop x curLine
+              newLine = pre ++ post
+              newLines = modifyAt (cy st) (const newLine) curLines
+          eventLoop vty $ st {lines = newLines, cx = x - 1}
         EvKey (KChar c) [] -> do
+          -- insert char at cursor
           let curLines = lines st
               curLine = curLines !! cy st
               x = cx st
