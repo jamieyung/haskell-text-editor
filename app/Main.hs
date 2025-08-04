@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 module Main where
 
 import Data.Function ((&))
@@ -15,37 +16,44 @@ eventLoop :: Vty -> State -> IO ()
 eventLoop vty st = do
   draw vty st
   e <- nextEvent vty
-  case mode st of
+  case Main.update e st of
+    Quit -> shutdown vty
+    NextState st' -> eventLoop vty st'
+
+data UpdateResult = Quit | NextState State
+
+update :: Event -> State -> UpdateResult
+update e st = case mode st of
     NormalMode ->
       case e of
         -- ways of entering insert mode
-        EvKey (KChar 'a') [] -> eventLoop vty $ st {mode = InsertMode, cx = cx st + 1}
-        EvKey (KChar 'i') [] -> eventLoop vty $ st {mode = InsertMode}
+        EvKey (KChar 'a') [] -> NextState $ st {mode = InsertMode, cx = cx st + 1}
+        EvKey (KChar 'i') [] -> NextState $ st {mode = InsertMode}
         EvKey (KChar 'o') [] -> do
           let curLines = lines st
               curY = cy st
               prevLines = take (curY + 1) curLines
               postLines = drop (curY + 1) curLines
               newLines = prevLines ++ [""] ++ postLines
-          eventLoop vty $ st {mode = InsertMode, lines = newLines, cx = 0, cy = cy st + 1}
+          NextState $ st {mode = InsertMode, lines = newLines, cx = 0, cy = cy st + 1}
         -- entering command mode
-        EvKey (KChar ':') [] -> eventLoop vty $ st {mode = CommandMode ""}
+        EvKey (KChar ':') [] -> NextState $ st {mode = CommandMode ""}
         -- movement
-        EvKey (KChar 'h') [] -> eventLoop vty $ moveCursorLeft st
-        EvKey (KChar 'j') [] -> eventLoop vty $ moveCursorVert 1 st
-        EvKey (KChar 'k') [] -> eventLoop vty $ moveCursorVert (-1) st
-        EvKey (KChar 'l') [] -> eventLoop vty $ moveCursorRight st
-        EvKey KLeft [] -> eventLoop vty $ moveCursorLeft st
-        EvKey KDown [] -> eventLoop vty $ moveCursorVert 1 st
-        EvKey KUp [] -> eventLoop vty $ moveCursorVert (-1) st
-        EvKey KRight [] -> eventLoop vty $ moveCursorRight st
-        _ -> eventLoop vty st
+        EvKey (KChar 'h') [] -> NextState $ moveCursorLeft st
+        EvKey (KChar 'j') [] -> NextState $ moveCursorVert 1 st
+        EvKey (KChar 'k') [] -> NextState $ moveCursorVert (-1) st
+        EvKey (KChar 'l') [] -> NextState $ moveCursorRight st
+        EvKey KLeft [] -> NextState $ moveCursorLeft st
+        EvKey KDown [] -> NextState $ moveCursorVert 1 st
+        EvKey KUp [] -> NextState $ moveCursorVert (-1) st
+        EvKey KRight [] -> NextState $ moveCursorRight st
+        _ -> NextState st
     InsertMode ->
       case e of
-        EvKey KLeft [] -> eventLoop vty $ moveCursorLeft st
-        EvKey KDown [] -> eventLoop vty $ moveCursorVert 1 st
-        EvKey KUp [] -> eventLoop vty $ moveCursorVert (-1) st
-        EvKey KRight [] -> eventLoop vty $ moveCursorRight st
+        EvKey KLeft [] -> NextState $ moveCursorLeft st
+        EvKey KDown [] -> NextState $ moveCursorVert 1 st
+        EvKey KUp [] -> NextState $ moveCursorVert (-1) st
+        EvKey KRight [] -> NextState $ moveCursorRight st
         EvKey KBS [] | cx st == 0 && cy st > 0 -> do
           -- put cur line at end of prev line
           let curLines = lines st
@@ -55,7 +63,7 @@ eventLoop vty st = do
               pre = take (curY - 1) curLines
               post = drop (curY + 1) curLines
               newLines = pre ++ [prevLine <> curLine] ++ post
-          eventLoop vty $ st {lines = newLines, cx = length prevLine, cy = curY - 1}
+          NextState $ st {lines = newLines, cx = length prevLine, cy = curY - 1}
         EvKey KBS [] | cx st > 0 -> do
           -- delete char from cur line
           let curLines = lines st
@@ -65,7 +73,7 @@ eventLoop vty st = do
               post = drop x curLine
               newLine = pre ++ post
               newLines = modifyAt (cy st) (const newLine) curLines
-          eventLoop vty $ st {lines = newLines, cx = x - 1}
+          NextState $ st {lines = newLines, cx = x - 1}
         EvKey (KChar c) [] -> do
           -- insert char at cursor
           let curLines = lines st
@@ -75,7 +83,7 @@ eventLoop vty st = do
               post = drop x curLine
               newLine = pre ++ [c] ++ post
               newLines = modifyAt (cy st) (const newLine) curLines
-          eventLoop vty $ st {lines = newLines, cx = x + 1}
+          NextState $ st {lines = newLines, cx = x + 1}
         EvKey KEnter [] -> do
           -- insert newline (TODO: automatic indentation)
           let curLines = lines st
@@ -87,28 +95,28 @@ eventLoop vty st = do
               prevLines = take curY curLines
               postLines = drop (curY + 1) curLines
               newLines = prevLines ++ [pre, post] ++ postLines
-          eventLoop vty $ st {lines = newLines, cx = 0, cy = curY + 1}
+          NextState $ st {lines = newLines, cx = 0, cy = curY + 1}
         EvKey KEsc [] ->
           let
-           in eventLoop vty $ ensureCXisInCurLineBounds $ st {mode = NormalMode}
-        _ -> eventLoop vty st
+           in NextState $ ensureCXisInCurLineBounds $ st {mode = NormalMode}
+        _ -> NextState st
     CommandMode s ->
       case e of
-        EvKey (KChar c) [] -> eventLoop vty $ st {mode = CommandMode $ s ++ [c]}
+        EvKey (KChar c) [] -> NextState $ st {mode = CommandMode $ s ++ [c]}
         EvKey KBS [] ->
-          eventLoop vty $
+          NextState $
             st
               { mode = case unsnoc s of
                   Nothing -> NormalMode
                   Just (cs, _) -> CommandMode cs
               }
         EvKey KEnter [] -> case s of
-          "q" -> shutdown vty
-          _ -> eventLoop vty $ st {mode = NormalMode}
+          "q" -> Quit
+          _ -> NextState $ st {mode = NormalMode}
         EvKey KEsc [] ->
           let
-           in eventLoop vty $ st {mode = NormalMode}
-        _ -> eventLoop vty st
+           in NextState $ st {mode = NormalMode}
+        _ -> NextState st
 
 moveCursorLeft :: State -> State
 moveCursorLeft st = ensureCXisInCurLineBounds $ st {cx = cx st - 1}
@@ -150,7 +158,7 @@ draw vty st = do
       statusLine = statusLineImage width height (length contentLines) st
       commandLine = commandLineImage width st
       img = [vertCat contentLines <-> statusLine <-> commandLine]
-  update vty $
+  vty.update $
     Picture
       { picCursor = Cursor (cx st) (cy st),
         picLayers = img,
