@@ -1,6 +1,7 @@
 module Main where
 
 import Data.Function ((&))
+import Data.List (unsnoc)
 import Graphics.Vty hiding (Mode)
 import Graphics.Vty.Platform.Unix (mkVty)
 import Prelude hiding (lines)
@@ -27,6 +28,8 @@ eventLoop vty st = do
               postLines = drop (curY + 1) curLines
               newLines = prevLines ++ [""] ++ postLines
           eventLoop vty $ st {mode = InsertMode, lines = newLines, cx = 0, cy = cy st + 1}
+        -- entering command mode
+        EvKey (KChar ':') [] -> eventLoop vty $ st {mode = CommandMode ""}
         -- movement
         EvKey (KChar 'h') [] -> eventLoop vty $ moveCursorLeft st
         EvKey (KChar 'j') [] -> eventLoop vty $ moveCursorVert 1 st
@@ -90,6 +93,20 @@ eventLoop vty st = do
           let
            in eventLoop vty $ ensureCXisInCurLineBounds $ st {mode = NormalMode}
         _ -> eventLoop vty st
+    CommandMode s ->
+      case e of
+        EvKey (KChar c) [] -> eventLoop vty $ st {mode = CommandMode $ s ++ [c]}
+        EvKey KBS [] ->
+          eventLoop vty $
+            st
+              { mode = case unsnoc s of
+                  Nothing -> NormalMode
+                  Just (cs, _) -> CommandMode cs
+              }
+        EvKey KEsc [] ->
+          let
+           in eventLoop vty $ st {mode = NormalMode}
+        _ -> eventLoop vty st
 
 moveCursorLeft :: State -> State
 moveCursorLeft st = ensureCXisInCurLineBounds $ st {cx = cx st - 1}
@@ -126,10 +143,11 @@ draw vty st = do
   (width, height) <- displayBounds (outputIface vty)
   let contentLines =
         lines st
-          & take (height - 1)
+          & take (height - 2)
           & map (string defAttr)
       statusLine = statusLineImage width height (length contentLines) st
-      img = [vertCat contentLines <-> statusLine]
+      commandLine = commandLineImage width st
+      img = [vertCat contentLines <-> statusLine <-> commandLine]
   update vty $
     Picture
       { picCursor = Cursor (cx st) (cy st),
@@ -142,10 +160,19 @@ statusLineImage width height nContentLines st =
   let (str, fg, bg) = case mode st of
         NormalMode -> ("NORMAL", black, green)
         InsertMode -> ("INSERT", black, blue)
+        CommandMode _ -> ("COMMAND", black, magenta)
       padded = take width (str ++ repeat ' ')
       attr = (defAttr `withBackColor` bg) `withForeColor` fg
    in string attr padded
-        & translateY (height - nContentLines - 1)
+        & translateY (height - nContentLines - 2)
+
+commandLineImage :: Int -> State -> Image
+commandLineImage width st =
+  let str = case mode st of
+        CommandMode s -> ":" <> s
+        _ -> ""
+      padded = take width (str ++ repeat ' ')
+   in string defAttr padded
 
 initialState :: State
 initialState =
@@ -163,4 +190,7 @@ data State = State
     mode :: Mode
   }
 
-data Mode = NormalMode | InsertMode
+data Mode
+  = NormalMode
+  | InsertMode
+  | CommandMode String
