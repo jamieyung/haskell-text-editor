@@ -17,6 +17,7 @@ eventLoop vty st = do
   case mode st of
     NormalMode ->
       case e of
+        EvKey (KChar 'a') [] -> eventLoop vty $ st {mode = InsertMode, cx = cx st + 1}
         EvKey (KChar 'i') [] -> eventLoop vty $ st {mode = InsertMode}
         EvKey (KChar 'h') [] -> eventLoop vty $ moveCursorLeft st
         EvKey (KChar 'j') [] -> eventLoop vty $ moveCursorVert 1 st
@@ -76,16 +77,21 @@ eventLoop vty st = do
               postLines = drop (curY + 1) curLines
               newLines = prevLines ++ [pre, post] ++ postLines
           eventLoop vty $ st {lines = newLines, cx = 0, cy = curY + 1}
-        EvKey KEsc [] -> eventLoop vty $ st {mode = NormalMode}
+        EvKey KEsc [] ->
+          let
+           in eventLoop vty $ ensureCXisInCurLineBounds $ st {mode = NormalMode}
         _ -> eventLoop vty st
 
 moveCursorLeft :: State -> State
-moveCursorLeft st = st {cx = max 0 (cx st - 1)}
+moveCursorLeft st = ensureCXisInCurLineBounds $ st {cx = cx st - 1}
 
 moveCursorRight :: State -> State
-moveCursorRight st =
+moveCursorRight st = ensureCXisInCurLineBounds $ st {cx = cx st + 1}
+
+ensureCXisInCurLineBounds :: State -> State
+ensureCXisInCurLineBounds st =
   let curLine = lines st !! cy st
-   in st {cx = min (length curLine - 1) (cx st + 1)}
+   in st {cx = max 0 $ min (length curLine - 1) (cx st)}
 
 moveCursorVert :: Int -> State -> State
 moveCursorVert dy st =
