@@ -23,7 +23,7 @@ eventLoop vty st = do
 data UpdateResult = Quit | NextState State
 
 update :: Event -> State -> UpdateResult
-update e st = case mode st of
+update e st = case st.mode of
   NormalMode -> updateNormalMode e st
   InsertMode -> updateInsertMode e st
   CommandMode s -> updateCommandMode e st s
@@ -32,15 +32,13 @@ updateNormalMode :: Event -> State -> UpdateResult
 updateNormalMode e st =
   case e of
     -- ways of entering insert mode
-    EvKey (KChar 'a') [] -> NextState $ st {mode = InsertMode, cx = cx st + 1}
+    EvKey (KChar 'a') [] -> NextState $ st {mode = InsertMode, cx = st.cx + 1}
     EvKey (KChar 'i') [] -> NextState $ st {mode = InsertMode}
     EvKey (KChar 'o') [] -> do
-      let curLines = lines st
-          curY = cy st
-          prevLines = take (curY + 1) curLines
-          postLines = drop (curY + 1) curLines
+      let prevLines = take (st.cy + 1) st.lines
+          postLines = drop (st.cy + 1) st.lines
           newLines = prevLines ++ [""] ++ postLines
-      NextState $ st {mode = InsertMode, lines = newLines, cx = 0, cy = cy st + 1}
+      NextState $ st {mode = InsertMode, lines = newLines, cx = 0, cy = st.cy + 1}
     -- entering command mode
     EvKey (KChar ':') [] -> NextState $ st {mode = CommandMode ""}
     -- movement
@@ -61,48 +59,39 @@ updateInsertMode e st =
     EvKey KDown [] -> NextState $ moveCursorVert 1 st
     EvKey KUp [] -> NextState $ moveCursorVert (-1) st
     EvKey KRight [] -> NextState $ moveCursorRight st
-    EvKey KBS [] | cx st == 0 && cy st > 0 -> do
+    EvKey KBS [] | st.cx == 0 && st.cy > 0 -> do
       -- put cur line at end of prev line
-      let curLines = lines st
-          curY = cy st
-          curLine = curLines !! curY
-          prevLine = curLines !! (curY - 1)
-          pre = take (curY - 1) curLines
-          post = drop (curY + 1) curLines
+      let curLine = st.lines !! st.cy
+          prevLine = st.lines !! (st.cy - 1)
+          pre = take (st.cy - 1) st.lines
+          post = drop (st.cy + 1) st.lines
           newLines = pre ++ [prevLine <> curLine] ++ post
-      NextState $ st {lines = newLines, cx = length prevLine, cy = curY - 1}
-    EvKey KBS [] | cx st > 0 -> do
+      NextState $ st {lines = newLines, cx = length prevLine, cy = st.cy - 1}
+    EvKey KBS [] | st.cx > 0 -> do
       -- delete char from cur line
-      let curLines = lines st
-          curLine = curLines !! cy st
-          x = cx st
-          pre = take (x - 1) curLine
-          post = drop x curLine
+      let curLine = st.lines !! st.cy
+          pre = take (st.cx - 1) curLine
+          post = drop st.cx curLine
           newLine = pre ++ post
-          newLines = modifyAt (cy st) (const newLine) curLines
-      NextState $ st {lines = newLines, cx = x - 1}
+          newLines = modifyAt st.cy (const newLine) st.lines
+      NextState $ st {lines = newLines, cx = st.cx - 1}
     EvKey (KChar c) [] -> do
       -- insert char at cursor
-      let curLines = lines st
-          curLine = curLines !! cy st
-          x = cx st
-          pre = take x curLine
-          post = drop x curLine
+      let curLine = st.lines !! st.cy
+          pre = take st.cx curLine
+          post = drop st.cx curLine
           newLine = pre ++ [c] ++ post
-          newLines = modifyAt (cy st) (const newLine) curLines
-      NextState $ st {lines = newLines, cx = x + 1}
+          newLines = modifyAt st.cy (const newLine) st.lines
+      NextState $ st {lines = newLines, cx = st.cx + 1}
     EvKey KEnter [] -> do
       -- insert newline (TODO: automatic indentation)
-      let curLines = lines st
-          curY = cy st
-          curLine = curLines !! curY
-          x = cx st
-          pre = take x curLine
-          post = drop x curLine
-          prevLines = take curY curLines
-          postLines = drop (curY + 1) curLines
+      let curLine = st.lines !! st.cy
+          pre = take st.cx curLine
+          post = drop st.cx curLine
+          prevLines = take st.cy st.lines
+          postLines = drop (st.cy + 1) st.lines
           newLines = prevLines ++ [pre, post] ++ postLines
-      NextState $ st {lines = newLines, cx = 0, cy = curY + 1}
+      NextState $ st {lines = newLines, cx = 0, cy = st.cy + 1}
     EvKey KEsc [] ->
       let
        in NextState $ ensureCXisInCurLineBounds $ st {mode = NormalMode}
@@ -128,26 +117,25 @@ updateCommandMode e st s =
     _ -> NextState st
 
 moveCursorLeft :: State -> State
-moveCursorLeft st = ensureCXisInCurLineBounds $ st {cx = cx st - 1}
+moveCursorLeft st = ensureCXisInCurLineBounds $ st {cx = st.cx - 1}
 
 moveCursorRight :: State -> State
-moveCursorRight st = ensureCXisInCurLineBounds $ st {cx = cx st + 1}
+moveCursorRight st = ensureCXisInCurLineBounds $ st {cx = st.cx + 1}
 
 ensureCXisInCurLineBounds :: State -> State
 ensureCXisInCurLineBounds st =
-  let curLine = lines st !! cy st
-   in st {cx = max 0 $ min (length curLine - 1) (cx st)}
+  let curLine = st.lines !! st.cy
+   in st {cx = max 0 $ min (length curLine - 1) st.cx}
 
 moveCursorVert :: Int -> State -> State
 moveCursorVert dy st =
-  let curY = cy st
-      newY = max 0 $ min (length (lines st) - 1) (curY + dy)
+  let newY = max 0 $ min (length st.lines - 1) (st.cy + dy)
       newX =
-        if newY == curY
-          then cx st
+        if newY == st.cy
+          then st.cx
           else
-            let curLine = lines st !! newY
-             in min (length curLine - 1) (cx st)
+            let curLine = st.lines !! newY
+             in min (length curLine - 1) st.cx
    in st {cx = newX, cy = newY}
 
 modifyAt :: Int -> (a -> a) -> [a] -> [a]
@@ -161,7 +149,7 @@ draw :: Vty -> State -> IO ()
 draw vty st = do
   (width, height) <- displayBounds (outputIface vty)
   let contentLines =
-        lines st
+        st.lines
           & take (height - 2)
           & map (string defAttr)
       statusLine = statusLineImage width height (length contentLines) st
@@ -169,14 +157,14 @@ draw vty st = do
       img = [vertCat contentLines <-> statusLine <-> commandLine]
   vty.update $
     Picture
-      { picCursor = Cursor (cx st) (cy st),
+      { picCursor = Cursor st.cx st.cy,
         picLayers = img,
         picBackground = ClearBackground
       }
 
 statusLineImage :: Int -> Int -> Int -> State -> Image
 statusLineImage width height nContentLines st =
-  let (str, fg, bg) = case mode st of
+  let (str, fg, bg) = case st.mode of
         NormalMode -> ("NORMAL", black, green)
         InsertMode -> ("INSERT", black, blue)
         CommandMode _ -> ("COMMAND", black, magenta)
@@ -187,7 +175,7 @@ statusLineImage width height nContentLines st =
 
 commandLineImage :: Int -> State -> Image
 commandLineImage width st =
-  let str = case mode st of
+  let str = case st.mode of
         CommandMode s -> ":" <> s
         _ -> ""
       padded = take width (str ++ repeat ' ')
