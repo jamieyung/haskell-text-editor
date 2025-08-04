@@ -19,24 +19,50 @@ eventLoop vty st = do
       case e of
         EvKey (KChar 'i') [] -> eventLoop vty $ st {mode = InsertMode}
         EvKey (KChar 'h') [] -> eventLoop vty $ st {cx = max 0 (cx st - 1)}
-        EvKey (KChar 'j') [] -> eventLoop vty $ st {cy = min (length (lines st) - 1) (cy st + 1)}
-        EvKey (KChar 'k') [] -> eventLoop vty $ st {cy = max 0 (cy st - 1)}
-        EvKey (KChar 'l') [] -> do
+        EvKey (KChar 'j') [] -> eventLoop vty $ moveCursorVert 1 st
+        EvKey (KChar 'k') [] -> eventLoop vty $ moveCursorVert (-1) st
+        EvKey (KChar 'l') [] ->
           let curLine = lines st !! cy st
-          eventLoop vty $ st {cx = min (length curLine - 1) (cx st + 1)}
+           in eventLoop vty $ st {cx = min (length curLine - 1) (cx st + 1)}
         EvKey KEsc [] -> shutdown vty
         _ -> eventLoop vty st
     InsertMode ->
       case e of
-        EvKey (KChar _) [] -> eventLoop vty st
+        EvKey (KChar c) [] -> do
+          let curLines = lines st
+              curLine = curLines !! cy st
+              x = cx st
+              pre = take x curLine
+              post = drop x curLine
+              newLine = pre ++ [c] ++ post
+              newLines = modifyAt (cy st) (const newLine) curLines
+          eventLoop vty $ st {lines = newLines, cx = x + 1}
         -- EvKey KEnter [] -> eventLoop vty (State $ s ++ ['\n'])
         EvKey KEsc [] -> eventLoop vty $ st {mode = NormalMode}
         _ -> eventLoop vty st
 
+moveCursorVert :: Int -> State -> State
+moveCursorVert dy st =
+  let curY = cy st
+      newY = max 0 $ min (length (lines st) - 1) (curY + dy)
+      newX =
+        if newY == curY
+          then cx st
+          else
+            let curLine = lines st !! newY
+             in min (length curLine - 1) (cx st)
+   in st {cx = newX, cy = newY}
+
+modifyAt :: Int -> (a -> a) -> [a] -> [a]
+modifyAt n f xs =
+  let (before, after) = splitAt n xs
+   in case after of
+        [] -> xs
+        (y : ys) -> before ++ f y : ys
+
 draw :: Vty -> State -> IO ()
 draw vty st = do
   (width, height) <- displayBounds (outputIface vty)
-
   let content =
         lines st
           & take (height - 1)
@@ -44,7 +70,6 @@ draw vty st = do
           & vertCat
       statusLine = statusLineImage width height st
       img = [content <-> statusLine]
-
   update vty $
     Picture
       { picCursor = Cursor (cx st) (cy st),
