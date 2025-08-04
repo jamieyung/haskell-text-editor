@@ -39,7 +39,6 @@ eventLoop vty st = do
         EvKey KDown [] -> eventLoop vty $ moveCursorVert 1 st
         EvKey KUp [] -> eventLoop vty $ moveCursorVert (-1) st
         EvKey KRight [] -> eventLoop vty $ moveCursorRight st
-        EvKey KEsc [] -> shutdown vty
         _ -> eventLoop vty st
     InsertMode ->
       case e of
@@ -103,6 +102,9 @@ eventLoop vty st = do
                   Nothing -> NormalMode
                   Just (cs, _) -> CommandMode cs
               }
+        EvKey KEnter [] -> case s of
+          "q" -> shutdown vty
+          _ -> eventLoop vty $ st {mode = NormalMode}
         EvKey KEsc [] ->
           let
            in eventLoop vty $ st {mode = NormalMode}
