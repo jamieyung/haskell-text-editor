@@ -58,7 +58,18 @@ eventLoop vty st = do
               newLine = pre ++ [c] ++ post
               newLines = modifyAt (cy st) (const newLine) curLines
           eventLoop vty $ st {lines = newLines, cx = x + 1}
-        -- EvKey KEnter [] -> eventLoop vty (State $ s ++ ['\n'])
+        EvKey KEnter [] -> do
+          -- insert newline (TODO: automatic indentation)
+          let curLines = lines st
+              curY = cy st
+              curLine = curLines !! curY
+              x = cx st
+              pre = take x curLine
+              post = drop x curLine
+              prevLines = take curY curLines
+              postLines = drop (curY + 1) curLines
+              newLines = prevLines ++ [pre, post] ++ postLines
+          eventLoop vty $ st {lines = newLines, cx = 0, cy = curY + 1}
         EvKey KEsc [] -> eventLoop vty $ st {mode = NormalMode}
         _ -> eventLoop vty st
 
