@@ -17,8 +17,17 @@ eventLoop vty st = do
   case mode st of
     NormalMode ->
       case e of
+        -- ways of entering insert mode
         EvKey (KChar 'a') [] -> eventLoop vty $ st {mode = InsertMode, cx = cx st + 1}
         EvKey (KChar 'i') [] -> eventLoop vty $ st {mode = InsertMode}
+        EvKey (KChar 'o') [] -> do
+          let curLines = lines st
+              curY = cy st
+              prevLines = take (curY + 1) curLines
+              postLines = drop (curY + 1) curLines
+              newLines = prevLines ++ [""] ++ postLines
+          eventLoop vty $ st {mode = InsertMode, lines = newLines, cx = 0, cy = cy st + 1}
+        -- movement
         EvKey (KChar 'h') [] -> eventLoop vty $ moveCursorLeft st
         EvKey (KChar 'j') [] -> eventLoop vty $ moveCursorVert 1 st
         EvKey (KChar 'k') [] -> eventLoop vty $ moveCursorVert (-1) st
