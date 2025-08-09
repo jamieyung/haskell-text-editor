@@ -1,16 +1,20 @@
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Render where
 
 import Data.Function ((&))
 import Graphics.Vty hiding (Mode)
-import Prelude hiding (lines)
 import State
+import Prelude hiding (lines)
 
 draw :: Vty -> State -> IO ()
 draw vty st = do
   (width, height) <- displayBounds (outputIface vty)
   let contentLines =
-        st.lines
+        st
+        -- TODO: can we avoid the need for this transformation
+          & \_ -> map toLine (above st) <> [toLine $ cur st] <> map toLine (below st)
           & take (height - 2)
           & map (string defAttr)
       statusLine = statusLineImage width height (length contentLines) st
@@ -18,10 +22,15 @@ draw vty st = do
       img = [vertCat contentLines <-> statusLine <-> commandLine]
   vty.update $
     Picture
-      { picCursor = Cursor st.cx st.cy,
+      { picCursor = uncurry Cursor (cursorPos st),
         picLayers = img,
         picBackground = ClearBackground
       }
+  where
+    toLine Line {before, after} = before <> after
+
+    cursorPos :: State -> (Int, Int)
+    cursorPos State {above, cur = Line {before}} = (length before, length above)
 
 statusLineImage :: Int -> Int -> Int -> State -> Image
 statusLineImage width height nContentLines st =
@@ -41,4 +50,3 @@ commandLineImage width st =
         _ -> ""
       padded = take width (str ++ repeat ' ')
    in string defAttr padded
-

@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module State where
 
 import Prelude hiding (lines)
@@ -5,18 +7,28 @@ import Prelude hiding (lines)
 initialState :: State
 initialState =
   State
-    { lines = ["hi", "wolrd"],
-      cx = 0,
-      cy = 0,
+    { above = [Line {before = "foo", after = ""}],
+      cur = Line {before = "abc", after = "defg"},
+      below = [],
       mode = NormalMode
     }
 
 data State = State
-  { lines :: [String],
-    cx :: Int,
-    cy :: Int,
+  { above :: [Line],
+    cur :: Line,
+    below :: [Line],
     mode :: Mode
   }
+
+data Line = Line
+  { before :: String,
+    after :: String
+  }
+
+instance Semigroup Line where
+  (Line {before, after})
+    <> (Line {before = before', after = after'}) =
+      Line {before = before <> after, after = before' <> after'}
 
 data Mode
   = NormalMode
