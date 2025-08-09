@@ -20,7 +20,12 @@ updateNormalMode :: Event -> State -> UpdateResult
 updateNormalMode e st =
   case e of
     -- ways of entering insert mode
-    EvKey (KChar 'a') [] -> NextState $ st {mode = InsertMode}
+    EvKey (KChar 'a') [] ->
+      NextState $
+        st
+          { cur = Line {before = (before . cur $ st) <> take 1 (after . cur $ st), after = drop 1 $ after . cur $ st},
+            mode = InsertMode
+          }
     EvKey (KChar 'i') [] -> NextState $ st {mode = InsertMode}
     EvKey (KChar 'o') [] -> NextState $ (\st' -> st' {mode = InsertMode}) $ insertBlankLineBelow st
     -- entering command mode
@@ -73,38 +78,38 @@ updateCommandMode e st s =
 insertBlankLineBelow :: State -> State
 insertBlankLineBelow st@State {above, cur} =
   st
-    { above = above ++ [cur],
+    { above = show cur : above,
       cur = Line {before = "", after = ""}
     }
 
 insertChar :: Char -> State -> State
 insertChar c st@State {cur = Line {before, after}} =
-  st {cur = Line {before = before ++ [c], after}}
+  st {cur = Line {before = c : before, after}}
 
 insertNewLine :: State -> State
 insertNewLine st@State {above, cur = Line {before, after}, below} =
   st
-    { above = above ++ [Line {before, after = []}],
+    { above = reverse before : above,
       cur = Line {before = [], after},
       below
     }
 
 backSpaceOne :: State -> State
 backSpaceOne st@State {above = [], cur = Line {before = []}} = st
-backSpaceOne st@State {above, cur = curLine@Line {before = []}, below} =
-  st {above = init above, cur = last above <> curLine, below}
-backSpaceOne st@State {cur = Line {before, after}} =
-  st { cur = Line {before = init before, after}}
+backSpaceOne st@State {above = (x : xs), cur = curLine@Line {before = []}, below} =
+  st {above = xs, cur = Line {before = x, after = []} <> curLine, below}
+backSpaceOne st@State {cur = Line {before = (_ : xs), after}} =
+  st {cur = Line {before = xs, after}}
 
 moveCursorLeft :: State -> State
 moveCursorLeft st@State {cur = Line {before = []}} = st
-moveCursorLeft st@State {cur = Line {before, after}} =
-  st {cur = Line {before = init before, after = last before : after}}
+moveCursorLeft st@State {cur = Line {before = (x : xs), after}} =
+  st {cur = Line {before = xs, after = x : after}}
 
 moveCursorRight :: State -> State
 moveCursorRight st@State {cur = Line {after = []}} = st
 moveCursorRight st@State {cur = Line {before, after = (x : xs)}} =
-  st {cur = Line {before = before ++ [x], after = xs}}
+  st {cur = Line {before = x : before, after = xs}}
 
 moveCursorVert :: Int -> State -> State
 moveCursorVert _ st@State {above = [], below = []} = st
@@ -113,12 +118,24 @@ moveCursorVert dy st
   | dy < 0 = (!! negate dy) . iterate moveCursorUp $ st
   | otherwise = st
 
+-- TODO:
+-- These seem broken in some stupid way with the reversing
 moveCursorDown :: State -> State
 moveCursorDown st@State {below = []} = st
-moveCursorDown st@State {above, cur, below = (x : xs)} =
-  st {above = above ++ [cur], cur = x, below = xs}
+moveCursorDown st@State {above, cur = curLine@Line {before}, below = (x : xs)} =
+  st
+    { above = show curLine : above,
+      cur = Line {before = reverse $ take (length before) x, after = drop (length before) x},
+      below = xs
+    }
 
+-- TODO:
+-- These seem broken in some stupid way with the reversing
 moveCursorUp :: State -> State
 moveCursorUp st@State {above = []} = st
-moveCursorUp st@State {above, cur, below} =
-  st {above = init above, cur = last above, below = cur : below}
+moveCursorUp st@State {above = (x : xs), cur = curLine@Line {before}, below} =
+  st
+    { above = xs,
+      cur = Line {before = reverse $ take (length before) x, after = drop (length before) x},
+      below = show curLine : below
+    }

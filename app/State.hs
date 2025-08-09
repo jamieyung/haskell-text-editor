@@ -7,25 +7,31 @@ import Prelude hiding (lines)
 initialState :: State
 initialState =
   State
-    { above = [Line {before = "foo", after = ""}],
+    { above = ["foo"],
       cur = Line {before = "abc", after = "defg"},
-      below = [],
+      below = ["bar"],
       mode = NormalMode
     }
 
 data State = State
-  { above :: [Line],
+  { above :: [String], -- preceding lines REVERSED
     cur :: Line,
-    below :: [Line],
+    below :: [String],
     mode :: Mode
   }
 
-data Line = Line {before :: String, after :: String}
+data Line = Line
+  { before :: String, -- preceeding chars REVERSED!
+    after :: String
+  }
 
 instance Semigroup Line where
   (Line {before, after})
     <> (Line {before = before', after = after'}) =
-      Line {before = before <> after, after = before' <> after'}
+      Line {before = reverse before <> after, after = reverse before' <> after'}
+
+instance Show Line where
+  show (Line {before, after}) = reverse before <> after
 
 data Mode
   = NormalMode

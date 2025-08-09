@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Render where
 
@@ -13,10 +13,11 @@ draw vty st = do
   (width, height) <- displayBounds (outputIface vty)
   let contentLines =
         st
-        -- TODO: can we avoid the need for this transformation
-          & \_ -> map toLine (above st) <> [toLine $ cur st] <> map toLine (below st)
-          & take (height - 2)
-          & map (string defAttr)
+          -- TODO: can we avoid the need for this transformation
+          & \_ ->
+            (reverse . above $ st) <> [show $ cur st] <> below st
+              & take (height - 2)
+              & map (string defAttr)
       statusLine = statusLineImage width height (length contentLines) st
       commandLine = commandLineImage width st
       img = [vertCat contentLines <-> statusLine <-> commandLine]
@@ -27,8 +28,6 @@ draw vty st = do
         picBackground = ClearBackground
       }
   where
-    toLine Line {before, after} = before <> after
-
     cursorPos :: State -> (Int, Int)
     cursorPos State {above, cur = Line {before}} = (length before, length above)
 
