@@ -1,11 +1,12 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+
 module Update where
 
 import Data.List (unsnoc)
 import Graphics.Vty hiding (Mode)
-import Prelude hiding (lines)
 import State
-import Util
+import Prelude hiding (lines)
 
 data UpdateResult = Quit | NextState State
 
@@ -19,13 +20,9 @@ updateNormalMode :: Event -> State -> UpdateResult
 updateNormalMode e st =
   case e of
     -- ways of entering insert mode
-    EvKey (KChar 'a') [] -> NextState $ st {mode = InsertMode, cx = st.cx + 1}
+    EvKey (KChar 'a') [] -> NextState $ st {mode = InsertMode}
     EvKey (KChar 'i') [] -> NextState $ st {mode = InsertMode}
-    EvKey (KChar 'o') [] -> do
-      let prevLines = take (st.cy + 1) st.lines
-          postLines = drop (st.cy + 1) st.lines
-          newLines = prevLines ++ [""] ++ postLines
-      NextState $ st {mode = InsertMode, lines = newLines, cx = 0, cy = st.cy + 1}
+    EvKey (KChar 'o') [] -> NextState $ (\st' -> st' {mode = InsertMode}) $ insertBlankLineBelow st
     -- entering command mode
     EvKey (KChar ':') [] -> NextState $ st {mode = CommandMode ""}
     -- movement
@@ -46,42 +43,12 @@ updateInsertMode e st =
     EvKey KDown [] -> NextState $ moveCursorVert 1 st
     EvKey KUp [] -> NextState $ moveCursorVert (-1) st
     EvKey KRight [] -> NextState $ moveCursorRight st
-    EvKey KBS [] | st.cx == 0 && st.cy > 0 -> do
-      -- put cur line at end of prev line
-      let curLine = st.lines !! st.cy
-          prevLine = st.lines !! (st.cy - 1)
-          pre = take (st.cy - 1) st.lines
-          post = drop (st.cy + 1) st.lines
-          newLines = pre ++ [prevLine <> curLine] ++ post
-      NextState $ st {lines = newLines, cx = length prevLine, cy = st.cy - 1}
-    EvKey KBS [] | st.cx > 0 -> do
-      -- delete char from cur line
-      let curLine = st.lines !! st.cy
-          pre = take (st.cx - 1) curLine
-          post = drop st.cx curLine
-          newLine = pre ++ post
-          newLines = modifyAt st.cy (const newLine) st.lines
-      NextState $ st {lines = newLines, cx = st.cx - 1}
-    EvKey (KChar c) [] -> do
-      -- insert char at cursor
-      let curLine = st.lines !! st.cy
-          pre = take st.cx curLine
-          post = drop st.cx curLine
-          newLine = pre ++ [c] ++ post
-          newLines = modifyAt st.cy (const newLine) st.lines
-      NextState $ st {lines = newLines, cx = st.cx + 1}
-    EvKey KEnter [] -> do
-      -- insert newline (TODO: automatic indentation)
-      let curLine = st.lines !! st.cy
-          pre = take st.cx curLine
-          post = drop st.cx curLine
-          prevLines = take st.cy st.lines
-          postLines = drop (st.cy + 1) st.lines
-          newLines = prevLines ++ [pre, post] ++ postLines
-      NextState $ st {lines = newLines, cx = 0, cy = st.cy + 1}
+    EvKey KBS [] -> NextState $ backSpaceOne st
+    EvKey (KChar c) [] -> NextState $ insertChar c st
+    EvKey KEnter [] -> NextState $ insertNewLine st
     EvKey KEsc [] ->
       let
-       in NextState $ ensureCXisInCurLineBounds $ st {mode = NormalMode}
+       in NextState $ st {mode = NormalMode}
     _ -> NextState st
 
 updateCommandMode :: Event -> State -> String -> UpdateResult
@@ -103,24 +70,55 @@ updateCommandMode e st s =
        in NextState $ st {mode = NormalMode}
     _ -> NextState st
 
+insertBlankLineBelow :: State -> State
+insertBlankLineBelow st@State {above, cur} =
+  st
+    { above = above ++ [cur],
+      cur = Line {before = "", after = ""}
+    }
+
+insertChar :: Char -> State -> State
+insertChar c st@State {cur = Line {before, after}} =
+  st {cur = Line {before = before ++ [c], after}}
+
+insertNewLine :: State -> State
+insertNewLine st@State {above, cur = Line {before, after}, below} =
+  st
+    { above = above ++ [Line {before, after = []}],
+      cur = Line {before = [], after},
+      below
+    }
+
+backSpaceOne :: State -> State
+backSpaceOne st@State {above = [], cur = Line {before = []}} = st
+backSpaceOne st@State {above, cur = curLine@Line {before = []}, below} =
+  st {above = init above, cur = last above <> curLine, below}
+backSpaceOne st@State {cur = Line {before, after}} =
+  st { cur = Line {before = init before, after}}
+
 moveCursorLeft :: State -> State
-moveCursorLeft st = ensureCXisInCurLineBounds $ st {cx = st.cx - 1}
+moveCursorLeft st@State {cur = Line {before = []}} = st
+moveCursorLeft st@State {cur = Line {before, after}} =
+  st {cur = Line {before = init before, after = last before : after}}
 
 moveCursorRight :: State -> State
-moveCursorRight st = ensureCXisInCurLineBounds $ st {cx = st.cx + 1}
-
-ensureCXisInCurLineBounds :: State -> State
-ensureCXisInCurLineBounds st =
-  let curLine = st.lines !! st.cy
-   in st {cx = max 0 $ min (length curLine - 1) st.cx}
+moveCursorRight st@State {cur = Line {after = []}} = st
+moveCursorRight st@State {cur = Line {before, after = (x : xs)}} =
+  st {cur = Line {before = before ++ [x], after = xs}}
 
 moveCursorVert :: Int -> State -> State
-moveCursorVert dy st =
-  let newY = max 0 $ min (length st.lines - 1) (st.cy + dy)
-      newX =
-        if newY == st.cy
-          then st.cx
-          else
-            let curLine = st.lines !! newY
-             in min (length curLine - 1) st.cx
-   in st {cx = newX, cy = newY}
+moveCursorVert _ st@State {above = [], below = []} = st
+moveCursorVert dy st
+  | dy > 0 = (!! dy) . iterate moveCursorDown $ st
+  | dy < 0 = (!! negate dy) . iterate moveCursorUp $ st
+  | otherwise = st
+
+moveCursorDown :: State -> State
+moveCursorDown st@State {below = []} = st
+moveCursorDown st@State {above, cur, below = (x : xs)} =
+  st {above = above ++ [cur], cur = x, below = xs}
+
+moveCursorUp :: State -> State
+moveCursorUp st@State {above = []} = st
+moveCursorUp st@State {above, cur, below} =
+  st {above = init above, cur = last above, below = cur : below}
