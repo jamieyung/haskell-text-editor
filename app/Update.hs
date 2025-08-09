@@ -20,7 +20,12 @@ updateNormalMode :: Event -> State -> UpdateResult
 updateNormalMode e st =
   case e of
     -- ways of entering insert mode
-    EvKey (KChar 'a') [] -> NextState $ st {mode = InsertMode}
+    EvKey (KChar 'a') [] ->
+      NextState $
+        st
+          { cur = Line {before = (before . cur $ st) <> take 1 (after . cur $ st), after = drop 1 $ after . cur $ st},
+            mode = InsertMode
+          }
     EvKey (KChar 'i') [] -> NextState $ st {mode = InsertMode}
     EvKey (KChar 'o') [] -> NextState $ (\st' -> st' {mode = InsertMode}) $ insertBlankLineBelow st
     -- entering command mode
@@ -94,7 +99,7 @@ backSpaceOne st@State {above = [], cur = Line {before = []}} = st
 backSpaceOne st@State {above, cur = curLine@Line {before = []}, below} =
   st {above = init above, cur = last above <> curLine, below}
 backSpaceOne st@State {cur = Line {before, after}} =
-  st { cur = Line {before = init before, after}}
+  st {cur = Line {before = init before, after}}
 
 moveCursorLeft :: State -> State
 moveCursorLeft st@State {cur = Line {before = []}} = st

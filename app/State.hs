@@ -20,7 +20,10 @@ data State = State
     mode :: Mode
   }
 
-data Line = Line {before :: String, after :: String}
+data Line = Line
+  { before :: String,
+    after :: String
+  }
 
 instance Semigroup Line where
   (Line {before, after})
