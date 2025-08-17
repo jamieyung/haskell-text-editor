@@ -118,8 +118,6 @@ moveCursorVert dy st
   | dy < 0 = (!! negate dy) . iterate moveCursorUp $ st
   | otherwise = st
 
--- TODO:
--- These seem broken in some stupid way with the reversing
 moveCursorDown :: State -> State
 moveCursorDown st@State {below = []} = st
 moveCursorDown st@State {above, cur = curLine@Line {before}, below = (x : xs)} =
@@ -129,8 +127,6 @@ moveCursorDown st@State {above, cur = curLine@Line {before}, below = (x : xs)} =
       below = xs
     }
 
--- TODO:
--- These seem broken in some stupid way with the reversing
 moveCursorUp :: State -> State
 moveCursorUp st@State {above = []} = st
 moveCursorUp st@State {above = (x : xs), cur = curLine@Line {before}, below} =
