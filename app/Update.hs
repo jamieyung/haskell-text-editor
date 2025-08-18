@@ -35,6 +35,7 @@ updateNormalMode e st =
     EvKey (KChar 'j') [] -> NextState $ moveCursorVert 1 st
     EvKey (KChar 'k') [] -> NextState $ moveCursorVert (-1) st
     EvKey (KChar 'l') [] -> NextState $ moveCursorRight st
+    EvKey (KChar '$') [] -> NextState $ moveToLineEnd st
     EvKey KLeft [] -> NextState $ moveCursorLeft st
     EvKey KDown [] -> NextState $ moveCursorVert 1 st
     EvKey KUp [] -> NextState $ moveCursorVert (-1) st
@@ -135,3 +136,10 @@ moveCursorUp st@State {above = (x : xs), cur = curLine@Line {before}, below} =
       cur = Line {before = reverse $ take (length before) x, after = drop (length before) x},
       below = show curLine : below
     }
+
+moveToLineEnd :: State -> State
+moveToLineEnd st@State {cur = Line {after = []}} = st
+moveToLineEnd
+  st@State
+    { cur = Line {before, after}
+    } = st {cur = Line {before = reverse after <> before, after = []}}
