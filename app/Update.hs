@@ -23,7 +23,7 @@ updateNormalMode e st =
     EvKey (KChar 'a') [] ->
       NextState $
         st
-          { cur = Line {before = (before . cur $ st) <> take 1 (after . cur $ st), after = drop 1 $ after . cur $ st},
+          { cur = Line {before = take 1 (after . cur $ st) <> (before . cur $ st), after = drop 1 $ after . cur $ st},
             mode = InsertMode
           }
     EvKey (KChar 'i') [] -> NextState $ st {mode = InsertMode}
