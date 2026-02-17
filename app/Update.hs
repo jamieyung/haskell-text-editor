@@ -33,6 +33,8 @@ updateNormalMode e st =
     EvKey (KChar 'j') [] -> NextState $ moveCursorVert 1 st
     EvKey (KChar 'k') [] -> NextState $ moveCursorVert (-1) st
     EvKey (KChar 'l') [] -> NextState $ moveCursorRight st
+    EvKey (KChar 'w') [] -> NextState $ moveCursorForwardWord st
+    EvKey (KChar 'b') [] -> NextState $ moveCursorBackwardWord st
     EvKey KLeft [] -> NextState $ moveCursorLeft st
     EvKey KDown [] -> NextState $ moveCursorVert 1 st
     EvKey KUp [] -> NextState $ moveCursorVert (-1) st
@@ -108,6 +110,12 @@ moveCursorLeft st = ensureCXisInCurLineBounds $ st {cx = st.cx - 1}
 
 moveCursorRight :: State -> State
 moveCursorRight st = ensureCXisInCurLineBounds $ st {cx = st.cx + 1}
+
+moveCursorForwardWord :: State -> State
+moveCursorForwardWord st = st
+
+moveCursorBackwardWord :: State -> State
+moveCursorBackwardWord st = st
 
 ensureCXisInCurLineBounds :: State -> State
 ensureCXisInCurLineBounds st =
